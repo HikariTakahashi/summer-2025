@@ -74,10 +74,7 @@ class ArduinoDataSimulator {
   startSimulation() {
     console.log("🔄 Arduinoデータシミュレーション開始");
     console.log("📊 以下のデータを1秒間隔で送信します:");
-    console.log("   - 温度センサー (15-35°C)");
     console.log("   - 湿度センサー (30-90%)");
-    console.log("   - アナログセンサー (0-1023)");
-    console.log("   - システム情報");
     console.log("");
 
     this.simulationInterval = setInterval(() => {
@@ -97,34 +94,14 @@ class ArduinoDataSimulator {
   }
 
   updateSensorValues() {
-    // 温度センサー（リアルな変動をシミュレート）
-    this.temperature += (Math.random() - 0.5) * 2; // ±1度の変動
-    if (this.temperature < 15.0) this.temperature = 15.0;
-    if (this.temperature > 35.0) this.temperature = 35.0;
-
-    // 湿度センサー（1秒に1度ずつ増加）
-    this.humidity += 1;
-    if (this.humidity > 90.0) this.humidity = 30.0; // 90%に達したら30%にリセット
-
-    // アナログセンサー（0-1023の範囲）
-    this.sensorValue += Math.floor((Math.random() - 0.5) * 100);
-    if (this.sensorValue < 0) this.sensorValue = 0;
-    if (this.sensorValue > 1023) this.sensorValue = 1023;
-
-    // アップタイム（秒）
-    this.uptime += 1;
+    // 湿度センサーのランダムな値を生成（30-90%の範囲）
+    this.humidity = Math.round((Math.random() * 60 + 30) * 10) / 10; // 30.0-90.0%のランダム値
   }
 
   sendSensorData() {
-    // Arduinoから送信されるのと同じフォーマットのJSONデータ
+    // シンプルな湿度データのみを送信
     const sensorData = {
-      temperature: Math.round(this.temperature * 100) / 100, // 小数点2桁
       humidity: Math.round(this.humidity * 10) / 10, // 小数点1桁
-      sensorValue: this.sensorValue,
-      timestamp: Date.now(),
-      uptime: this.uptime,
-      freeMemory: Math.floor(Math.random() * 512) + 1536, // 1536-2048の範囲
-      wifiRSSI: Math.floor(Math.random() * 30) - 70, // -70 to -40 dBm
     };
 
     try {
@@ -133,11 +110,7 @@ class ArduinoDataSimulator {
 
       // コンソールに送信データを表示
       console.log(
-        `📤 [${new Date().toLocaleTimeString()}] 温度:${
-          sensorData.temperature
-        }°C, 湿度:${sensorData.humidity}%, センサー:${
-          sensorData.sensorValue
-        }, RSSI:${sensorData.wifiRSSI}dBm`
+        `📤 [${new Date().toLocaleTimeString()}] 湿度:${sensorData.humidity}%`
       );
     } catch (error) {
       console.error("❌ データ送信エラー:", error);
@@ -209,12 +182,7 @@ console.log("=================================");
 console.log("Arduino WebSocketクライアント");
 console.log("=================================");
 console.log("このクライアントは以下をシミュレートします:");
-console.log("• 温度センサー (DHT22)");
-console.log("• 湿度センサー (DHT22)");
-console.log("• アナログセンサー (A0)");
-console.log("• WiFi信号強度 (RSSI)");
-console.log("• メモリ使用量");
-console.log("• システムアップタイム");
+console.log("• 湿度センサー (30-90%のランダム値)");
 console.log("");
 
 const simulator = new ArduinoDataSimulator();
