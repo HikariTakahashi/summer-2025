@@ -2,6 +2,7 @@ const WebSocket = require("ws");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 // HTTPサーバーを作成
 const server = http.createServer((req, res) => {
@@ -99,8 +100,24 @@ wss.on("connection", (ws) => {
   });
 });
 
+// プライベートIPアドレスを取得する関数
+function getPrivateIPAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const interfaceName in interfaces) {
+    const networkInterface = interfaces[interfaceName];
+    for (const connection of networkInterface) {
+      // IPv4で内部IPアドレス（非ループバック）を探す
+      if (connection.family === "IPv4" && !connection.internal) {
+        return connection.address;
+      }
+    }
+  }
+  return "localhost"; // プライベートIPが見つからない場合のフォールバック
+}
+
 // HTTPサーバーを起動
 server.listen(8080, () => {
-  console.log("HTTP server is running on http://localhost:8080");
-  console.log("WebSocket server is running on ws://localhost:8080");
+  const privateIP = getPrivateIPAddress();
+  console.log(`HTTP server is running on http://${privateIP}:8080`);
+  console.log(`Enter the above IP address into your Arduino.`);
 });
