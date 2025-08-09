@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arduino データ表示</title>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔧 Arduino データモニター</h1>
+
+      <div class="status-bar">
+        <div class="connection-status" id="connectionStatus">
+          <span class="disconnected">⚠️ 接続待機中...</span>
+        </div>
+        <div class="timestamp" id="lastUpdate">最終更新: --:--:--</div>
+      </div>
+
+      <div class="error-message" id="errorMessage">
+        接続エラーが発生しました
+      </div>
+
+      <div class="data-display" id="dataDisplay">
+        <!-- データカードがここに動的に追加されます -->
+      </div>
+
+      <div class="raw-data">
+        <h3>📊 受信データログ</h3>
+        <div class="data-log" id="dataLog">
+          <div class="log-entry">ログ開始...</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      class ArduinoDataDisplay {
+        constructor() {
+          this.socket = null;
+          this.dataCards = new Map();
+          this.maxLogEntries = 50;
+          this.reconnectAttempts = 0;
+          this.maxReconnectAttempts = 5;
+
+          this.initializeWebSocket();
+        }
+
+        initializeWebSocket() {
+          try {
+            this.socket = new WebSocket("ws://localhost:8080");
+
+            this.socket.addEventListener("open", (event) => {
+              console.log("Arduino WebSocketサーバーに接続しました");
+              this.updateConnectionStatus(true);
+              this.addLogEntry("✅ WebSocketサーバーに接続しました");
+              this.reconnectAttempts = 0;
+              this.hideError();
+            });
+
+            this.socket.addEventListener("message", (event) => {
+              this.handleArduinoData(event.data);
+            });
+
+            this.socket.addEventListener("close", (event) => {
+              console.log("WebSocket接続が閉じられました");
+              this.updateConnectionStatus(false);
+              this.addLogEntry("❌ WebSocket接続が切断されました");
+              this.attemptReconnect();
+            });
+
+            this.socket.addEventListener("error", (event) => {
+              console.error("WebSocketエラー:", event);
+              this.showError("WebSocket接続エラーが発生しました");
+              this.addLogEntry("⚠️ WebSocketエラーが発生しました");
+            });
+          } catch (error) {
+            console.error("WebSocket初期化エラー:", error);
+            this.showError("WebSocketの初期化に失敗しました");
+          }
+        }
+
+        handleArduinoData(rawData) {
+          try {
+            this.updateLastUpdateTime();
+
+            // JSON形式のデータを試す
+            let data;
+            try {
+              data = JSON.parse(rawData);
+            } catch (jsonError) {
+              // JSON以外の場合は文字列として処理
+              data = { value: rawData.toString().trim() };
+            }
+
+            this.addLogEntry(`📥 受信: ${rawData}`);
+            this.updateDataDisplay(data);
+          } catch (error) {
+            console.error("データ処理エラー:", error);
+            this.addLogEntry(`❌ データ処理エラー: ${error.message}`);
+          }
+        }
+
+        updateDataDisplay(data) {
+          // データオブジェクトの各プロパティを表示
+          Object.keys(data).forEach((key) => {
+            const value = data[key];
+            this.createOrUpdateDataCard(key, value);
+          });
+        }
+
+        createOrUpdateDataCard(label, value) {
+          const cardId = `card-${label}`;
+          let card = document.getElementById(cardId);
+
+          if (!card) {
+            // 新しいカードを作成
+            card = document.createElement("div");
+            card.className = "data-card";
+            card.id = cardId;
+
+            card.innerHTML = `
+                        <div class="data-label">${this.formatLabel(label)}</div>
+                        <div class="data-value" id="value-${label}">--</div>
+                        <div class="data-unit" id="unit-${label}"></div>
+                    `;
+
+            document.getElementById("dataDisplay").appendChild(card);
+          }
+
+          // 値を更新
+          const valueElement = document.getElementById(`value-${label}`);
+          const unitElement = document.getElementById(`unit-${label}`);
+
+          if (valueElement) {
+            valueElement.textContent = this.formatValue(value);
+            valueElement.classList.add("pulse");
+            setTimeout(() => valueElement.classList.remove("pulse"), 500);
+          }
+
+          // 単位を推定して設定
+          if (unitElement) {
+            unitElement.textContent = this.guessUnit(label, value);
+          }
+        }
+
+        formatLabel(label) {
+          // ラベルを日本語に変換
+          const labelMap = {
+            temperature: "温度",
+            humidity: "湿度",
+            pressure: "気圧",
+            distance: "距離",
+            voltage: "電圧",
+            current: "電流",
+            speed: "速度",
+            angle: "角度",
+            value: "値",
+            sensor: "センサー値",
+            data: "データ",
+          };
+
+          return labelMap[label.toLowerCase()] || label;
+        }
+
+        formatValue(value) {
+          if (typeof value === "number") {
+            return value.toFixed(2);
+          }
+          return value.toString();
+        }
+
+        guessUnit(label, value) {
+          const lowerLabel = label.toLowerCase();
+
+          if (lowerLabel.includes("temp")) return "°C";
+          if (lowerLabel.includes("humid")) return "%";
+          if (lowerLabel.includes("pressure")) return "hPa";
+          if (lowerLabel.includes("distance")) return "cm";
+          if (lowerLabel.includes("voltage")) return "V";
+          if (lowerLabel.includes("current")) return "A";
+          if (lowerLabel.includes("speed")) return "m/s";
+          if (lowerLabel.includes("angle")) return "°";
+
+          return "";
+        }
+
+        updateConnectionStatus(connected) {
+          const statusElement = document.getElementById("connectionStatus");
+          if (connected) {
+            statusElement.innerHTML =
+              '<span class="connected">✅ Arduino接続中</span>';
+          } else {
+            statusElement.innerHTML =
+              '<span class="disconnected">❌ Arduino切断</span>';
+          }
+        }
+
+        updateLastUpdateTime() {
+          const now = new Date();
+          const timeString = now.toLocaleTimeString("ja-JP");
+          document.getElementById(
+            "lastUpdate"
+          ).textContent = `最終更新: ${timeString}`;
+        }
+
+        addLogEntry(message) {
+          const logContainer = document.getElementById("dataLog");
+          const entry = document.createElement("div");
+          entry.className = "log-entry";
+
+          const timestamp = new Date().toLocaleTimeString("ja-JP");
+          entry.textContent = `[${timestamp}] ${message}`;
+
+          logContainer.appendChild(entry);
+
+          // ログエントリ数を制限
+          const entries = logContainer.querySelectorAll(".log-entry");
+          if (entries.length > this.maxLogEntries) {
+            entries[0].remove();
+          }
+
+          // 最新エントリまでスクロール
+          logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        showError(message) {
+          const errorElement = document.getElementById("errorMessage");
+          errorElement.textContent = message;
+          errorElement.style.display = "block";
+        }
+
+        hideError() {
+          document.getElementById("errorMessage").style.display = "none";
+        }
+
+        attemptReconnect() {
+          if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = Math.min(
+              1000 * Math.pow(2, this.reconnectAttempts),
+              10000
+            );
+
+            this.addLogEntry(
+              `🔄 ${delay / 1000}秒後に再接続を試みます... (${
+                this.reconnectAttempts
+              }/${this.maxReconnectAttempts})`
+            );
+
+            setTimeout(() => {
+              this.initializeWebSocket();
+            }, delay);
+          } else {
+            this.showError(
+              "最大再接続回数に達しました。ページを更新してください。"
+            );
+            this.addLogEntry(
+              "❌ 再接続に失敗しました。ページを更新してください。"
+            );
+          }
+        }
+      }
+
+      // アプリケーション開始
+      document.addEventListener("DOMContentLoaded", () => {
+        new ArduinoDataDisplay();
+      });
+    </script>
+  </body>
+</html>
