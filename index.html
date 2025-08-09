@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360-Degree Sensor Data Visualization with D3.js</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        svg {
+            border-radius: 50%;
+            background-color: white; /* Background color of the SVG */
+        }
+        .point {
+            stroke: none;
+        }
+        .axis-line {
+            stroke: #000;
+            stroke-width: 1;
+        }
+        .circle-border {
+            fill: none;
+            stroke: black;
+            stroke-width: 2;
+        }
+        .concentric-circle {
+            fill: none;
+            stroke: gray;
+            stroke-width: 1;
+            opacity: 0.5;
+        }
+        .scanner-light {
+            fill: rgba(255, 255, 0, 0.3);
+            stroke: none;
+        }
+        .stats {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            right: 50px;
+            width: 250px;
+            padding: 20px; /* Increased padding */
+            border: 1px solid black;
+            background-color: rgba(255, 255, 255, 0.8);
+            text-align: center; /* Center-align text */
+            font-family: monospace; /* Use monospace font to align decimals */
+            font-size: 18px; /* Increased font size */
+        }
+        .warning-message {
+            position: absolute;
+            top: 20px;
+            right: 50px;
+            width: 300px;
+            padding: 10px;
+            border: 1px solid red;
+            background-color: rgba(255, 0, 0, 0.2);
+            color: red;
+            font-weight: bold;
+            display: none; /* Initially hidden */
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .blink {
+            animation: blink 1s infinite;
+        }
+        .stat-line {
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            margin-bottom: 10px; /* Increased margin */
+        }
+        .stat-label {
+            width: 150px; /* Adjust width as needed */
+            text-align: right;
+            margin-right: 15px; /* Increased margin */
+            font-weight: bold; /* Increased font weight */
+        }
+        .stat-value {
+            width: 100px; /* Adjust width as needed */
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>360-Degree Sensor Data Visualization</h1>
+    <svg id="radar" width="600" height="600">
+        <rect x="0" y="0" width="100%" height="100%" fill="white"></rect> <!-- Background rectangle -->
+    </svg>
+    <div class="stats" id="stats">
+        <h3>現在のラップ</h3>
+        <div class="stat-line">
+            <span class="stat-label">平均距離:</span> <span id="currentAvg" class="stat-value"></span> cm
+        </div>
+        <div class="stat-line">
+            <span class="stat-label">最短距離:</span> <span id="currentMin" class="stat-value"></span> cm
+        </div>
+        <div class="stat-line">
+            <span class="stat-label">最長距離:</span> <span id="currentMax" class="stat-value"></span> cm
+        </div>
+        <h3>累計</h3>
+        <div class="stat-line">
+            <span class="stat-label">平均距離:</span> <span id="totalAvg" class="stat-value"></span> cm
+        </div>
+        <div class="stat-line">
+            <span class="stat-label">最短距離:</span> <span id="totalMin" class="stat-value"></span> cm
+        </div>
+        <div class="stat-line">
+            <span class="stat-label">最長距離:</span> <span id="totalMax" class="stat-value"></span> cm
+        </div>
+    </div>
+    <div class="warning-message" id="warning">
+        <p>警告: 82cm以内の物体を探知しました!</p>
+    </div>
+    <script>
+        const svg = d3.select("#radar"),
+              width = +svg.attr("width"),
+              height = +svg.attr("height"),
+              radius = Math.min(width, height) / 2,
+              g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+        let currentAngle = 0;
+        let lapDistances = [];
+        let totalDistances = [];
+        let warningDisplayed = false;
+
+        // 円形の枠を追加
+        g.append("circle")
+            .attr("class", "circle-border")
+            .attr("cx", 0)
+            .attr("cy", 0)
+            .attr("r", radius);
+
+        // 10個の同心円を等間隔で描画
+        const numCircles = 10;
+        for (let i = 1; i <= numCircles; i++) {
+            g.append("circle")
+                .attr("class", "concentric-circle")
+                .attr("cx", 0)
+                .attr("cy", 0)
+                .attr("r", (radius / numCircles) * i);
+        }
+
+        // 45度ごとの基準線を追加
+        const angles = d3.range(0, 360, 45);
+        angles.forEach(angle => {
+            const radian = angle * (Math.PI / 180);
+            g.append("line")
+                .attr("class", "axis-line")
+                .attr("x1", 0)
+                .attr("y1", 0)
+                .attr("x2", radius * Math.cos(radian))
+                .attr("y2", radius * Math.sin(radian));
+        });
+
+        // スキャナーライトの扇形を追加
+        const scannerLight = g.append("path")
+            .attr("class", "scanner-light")
+            .attr("d", arcPath(currentAngle));
+
+        // WebSocketの接続を確立
+        const socket = new WebSocket("ws://localhost:8080");
+
+        socket.addEventListener("open", (event) => {
+            console.log("Connected to WebSocket server");
+        });
+
+        socket.addEventListener("message", (event) => {
+            const reader = new FileReader();
+
+            reader.onload = function() {
+                const text = reader.result;
+                const data = JSON.parse(text);  // JSONをオブジェクトにパース
+                console.log("Message from server: ", data);
+
+                const distance = data.distance;
+
+                // 一周ごとの距離データを処理
+                if (data.arg < currentAngle) {
+                    updateStats(lapDistances, totalDistances, true);
+                    g.selectAll(".point").remove();
+                    lapDistances = [];
+                    document.getElementById('warning').style.display = 'none'; // Hide warning message at end of lap
+                    warningDisplayed = false;
+                }
+                currentAngle = data.arg;
+                lapDistances.push(distance);
+                totalDistances.push(distance);
+
+                // スキャナーライトを更新
+                scannerLight.attr("d", arcPath(currentAngle));
+
+                // 極座標からデカルト座標への変換
+                const angle = data.arg * (Math.PI / 180);  // argをラジアンに変換
+                const x = radius * (distance / 100) * Math.cos(angle);
+                const y = radius * (distance / 100) * Math.sin(angle);
+
+                // 色を距離に基づいて決定
+                let color;
+                if (distance < 81) {
+                    color = "purple";
+                } else if (distance >= 81 && distance < 85) {
+                    color = "red";
+                } else if (distance >= 85 && distance < 90) {
+                    color = "blue";
+                } else if (distance >= 90 && distance < 95) {
+                    color = "black";
+                } else if (distance >= 95 && distance < 100) {
+                    color = "green";
+                } else {
+                    color = "rgb(7, 7, 225)";
+                }
+
+                // 点滅する点の追加
+                const point = g.append("circle")
+                    .attr("class", "point")
+                    .attr("cx", x)
+                    .attr("cy", y)
+                    .attr("r", 3)
+                    .attr("fill", color);
+
+                if (distance < 82) {
+                    point.classed("blink", true); // 点滅エフェクト
+                    if (!warningDisplayed) {
+                        document.getElementById('warning').style.display = 'block'; // Show warning message
+                        warningDisplayed = true;
+                    }
+                }
+
+                updateStats(lapDistances, totalDistances, false);
+            };
+
+            reader.readAsText(event.data);
+        });
+
+        function updateStats(lapDistances, totalDistances, resetLapStats) {
+            if (resetLapStats) {
+                document.getElementById('currentAvg').textContent = "-";
+                document.getElementById('currentMin').textContent = "-";
+                document.getElementById('currentMax').textContent = "-";
+            } else {
+                document.getElementById('currentAvg').textContent = formatNumber(average(lapDistances));
+                document.getElementById('currentMin').textContent = formatNumber(Math.min(...lapDistances));
+                document.getElementById('currentMax').textContent = formatNumber(Math.max(...lapDistances));
+            }
+
+            document.getElementById('totalAvg').textContent = formatNumber(average(totalDistances));
+            document.getElementById('totalMin').textContent = formatNumber(Math.min(...totalDistances));
+            document.getElementById('totalMax').textContent = formatNumber(Math.max(...totalDistances));
+        }
+
+        function formatNumber(num) {
+            return num.toFixed(2).padStart(6, ' '); // Adjust padding and width as needed
+        }
+
+        function average(arr) {
+            return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        }
+
+        function arcPath(angle) {
+            const radian = angle * (Math.PI / 180);
+            const x1 = radius * Math.cos(radian - 0.05); // Adjust the angle for the light effect
+            const y1 = radius * Math.sin(radian - 0.05);
+            const x2 = radius * Math.cos(radian + 0.05);
+            const y2 = radius * Math.sin(radian + 0.05);
+
+            return `M0,0 L${x1},${y1} L${x2},${y2} A${radius},${radius} 0 0,1 0,0 Z`;
+        }
+    </script>
+</body>
+</html>
