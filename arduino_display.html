@@ -4,11 +4,260 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arduino データ表示</title>
+
+    <!-- ▼ styles.css をインライン化 + 追加スタイルで統合 -->
+    <style>
+      :root {
+        --bg: #f3f4f6;
+        --surface: #ffffff;
+        --text: #111827;
+        --muted: #6b7280;
+        --ok: #16a34a;
+        --warn: #f59e0b;
+        --err: #ef4444;
+        --radius: 24px;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+        --border: #eceef1;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif;
+      }
+
+      /* ====== 1) 既存 Arduino 画面のスタイル ====== */
+      .container {
+        max-width: 1100px;
+        margin: 40px auto 80px;
+        padding: 0 20px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: clamp(22px, 3.2vw, 40px);
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      .status-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 18px;
+        box-shadow: var(--shadow);
+      }
+      .connection-status span {
+        font-weight: 600;
+      }
+      .connected {
+        color: var(--ok);
+      }
+      .disconnected {
+        color: var(--err);
+      }
+      .timestamp {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .error-message {
+        display: none;
+        margin-top: 12px;
+        background: #fff5f5;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+        padding: 10px 14px;
+        border-radius: 12px;
+      }
+
+      .data-display {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+      }
+      .data-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: var(--shadow);
+      }
+      .data-label {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      .data-value {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .data-unit {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .pulse {
+        animation: pulse 0.5s ease;
+      }
+      @keyframes pulse {
+        from {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.03);
+        }
+        to {
+          transform: scale(1);
+        }
+      }
+
+      .raw-data {
+        margin-top: 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+      .raw-data h3 {
+        margin: 0 0 10px;
+      }
+      .data-log {
+        max-height: 260px;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        background: #fbfbfc;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .log-entry {
+        padding: 4px 0;
+        border-bottom: 1px dashed #eceff3;
+      }
+      .log-entry:last-child {
+        border-bottom: 0;
+      }
+
+      /* ====== 2) 湿度カード + グラフ（2つ目HTMLのスタイル） ====== */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 32px 40px;
+        box-shadow: var(--shadow);
+        min-width: 320px;
+      }
+      .value-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 10px;
+      }
+      .value {
+        font-size: clamp(56px, 10vw, 96px);
+        font-weight: 800;
+        line-height: 1;
+      }
+      .unit {
+        font-size: 24px;
+        color: var(--muted);
+      }
+      .ts {
+        margin-top: 14px;
+        font-size: 14px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        text-align: center;
+      }
+      .status {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ccc;
+        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.03);
+      }
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+      }
+      .dot.connecting {
+        background: var(--warn);
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+      }
+      .dot.offline {
+        background: var(--err);
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
+      }
+
+      .chart-wrap {
+        width: min(960px, 100%);
+        margin: 18px auto 0;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+      .btn {
+        background: #0d6efd;
+        color: #fff;
+        border: 0;
+        border-radius: 999px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      .btn.outline {
+        background: transparent;
+        color: #0d6efd;
+        border: 1px solid #0d6efd;
+      }
+
+      /* 湿度セクションのまとまり */
+      .humidity-section {
+        margin-top: 28px;
+      }
+
+      /* 小さな画面での余白調整 */
+      @media (max-width: 640px) {
+        .status-bar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+
+    <!-- ▼ Chart.js（ライブグラフ用） -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   </head>
+
   <body>
     <div class="container">
       <h1>🔧 Arduino データモニター</h1>
 
+      <!-- 接続・タイムスタンプ -->
       <div class="status-bar">
         <div class="connection-status" id="connectionStatus">
           <span class="disconnected">⚠️ 接続待機中...</span>
@@ -16,14 +265,45 @@
         <div class="timestamp" id="lastUpdate">最終更新: --:--:--</div>
       </div>
 
+      <!-- エラーバナー -->
       <div class="error-message" id="errorMessage">
         接続エラーが発生しました
       </div>
 
+      <!-- ▼ 湿度カード + ライブグラフ（統合） -->
+      <section class="humidity-section">
+        <section class="card">
+          <div class="value-row">
+            <span id="hum" class="value" aria-live="polite">--</span>
+            <span class="unit">%</span>
+          </div>
+          <div id="ts" class="ts">--:--:--</div>
+
+          <div class="status">
+            <span id="dot" class="dot offline"></span>
+            <span id="statusText">未接続</span>
+          </div>
+        </section>
+
+        <section class="chart-wrap">
+          <canvas id="humChart" height="220"></canvas>
+          <div class="controls">
+            <button id="clearBtn" class="btn outline">リセット</button>
+            <button id="csvBtn" class="btn">CSV保存</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- 汎用データカード（受信データの各キーを自動でカード化） -->
       <div class="data-display" id="dataDisplay">
-        <!-- データカードがここに動的に追加されます -->
+        <div class="data-card">
+          <div class="data-label">ヒント</div>
+          <div class="data-value">JSON の各キーがカードで増えます</div>
+          <div class="data-unit"></div>
+        </div>
       </div>
 
+      <!-- 受信ログ -->
       <div class="raw-data">
         <h3>📊 受信データログ</h3>
         <div class="data-log" id="dataLog">
@@ -32,6 +312,7 @@
       </div>
     </div>
 
+    <!-- ▼ アプリ本体 -->
     <script>
       class ArduinoDataDisplay {
         constructor() {
@@ -41,29 +322,40 @@
           this.reconnectAttempts = 0;
           this.maxReconnectAttempts = 5;
 
+          // 湿度用
+          this.humHistory = []; // {time: "HH:mm:ss", value: number}
+          this.maxPoints = 120;
+          this.humChart = null;
+
+          this.initializeChart();
           this.initializeWebSocket();
+          this.bindButtons();
+          this.setStatus("connecting", "接続待機中...");
         }
 
+        /* ========== WebSocket ========== */
         initializeWebSocket() {
           try {
             this.socket = new WebSocket("ws://localhost:8080");
 
-            this.socket.addEventListener("open", (event) => {
+            this.socket.addEventListener("open", () => {
               console.log("Arduino WebSocketサーバーに接続しました");
               this.updateConnectionStatus(true);
               this.addLogEntry("✅ WebSocketサーバーに接続しました");
               this.reconnectAttempts = 0;
               this.hideError();
+              this.setStatus("ok", "接続中");
             });
 
             this.socket.addEventListener("message", (event) => {
               this.handleArduinoData(event.data);
             });
 
-            this.socket.addEventListener("close", (event) => {
+            this.socket.addEventListener("close", () => {
               console.log("WebSocket接続が閉じられました");
               this.updateConnectionStatus(false);
               this.addLogEntry("❌ WebSocket接続が切断されました");
+              this.setStatus("offline", "切断");
               this.attemptReconnect();
             });
 
@@ -71,36 +363,127 @@
               console.error("WebSocketエラー:", event);
               this.showError("WebSocket接続エラーが発生しました");
               this.addLogEntry("⚠️ WebSocketエラーが発生しました");
+              this.setStatus("offline", "エラー");
             });
           } catch (error) {
             console.error("WebSocket初期化エラー:", error);
             this.showError("WebSocketの初期化に失敗しました");
+            this.setStatus("offline", "初期化失敗");
           }
         }
 
+        attemptReconnect() {
+          if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = Math.min(
+              1000 * Math.pow(2, this.reconnectAttempts),
+              10000
+            );
+
+            this.addLogEntry(
+              `🔄 ${delay / 1000}秒後に再接続を試みます... (${
+                this.reconnectAttempts
+              }/${this.maxReconnectAttempts})`
+            );
+
+            setTimeout(() => {
+              this.setStatus("connecting", "再接続中...");
+              this.initializeWebSocket();
+            }, delay);
+          } else {
+            this.showError(
+              "最大再接続回数に達しました。ページを更新してください。"
+            );
+            this.addLogEntry(
+              "❌ 再接続に失敗しました。ページを更新してください。"
+            );
+            this.setStatus("offline", "再接続失敗");
+          }
+        }
+
+        /* ========== 受信処理 ========== */
         handleArduinoData(rawData) {
           try {
             this.updateLastUpdateTime();
+            const nowStr = new Date().toLocaleTimeString("ja-JP");
+            document.getElementById("ts").textContent = nowStr;
 
-            // JSON形式のデータを試す
             let data;
             try {
               data = JSON.parse(rawData);
-            } catch (jsonError) {
-              // JSON以外の場合は文字列として処理
-              data = { value: rawData.toString().trim() };
+            } catch {
+              // "48.1%" や "humidity:48.1" のような文字列にも対応
+              data = this.parseFallback(rawData);
             }
 
-            this.addLogEntry(`📥 受信: ${rawData}`);
+            this.addLogEntry(
+              `📥 受信: ${
+                typeof rawData === "string" ? rawData : JSON.stringify(rawData)
+              }`
+            );
             this.updateDataDisplay(data);
+
+            // 湿度抽出（キー候補や % 含み文字列から自動判定）
+            const hum = this.extractHumidity(data);
+            if (typeof hum === "number" && isFinite(hum)) {
+              this.updateHumidityUI(hum, nowStr);
+              this.updateChart(hum, nowStr);
+            }
           } catch (error) {
             console.error("データ処理エラー:", error);
             this.addLogEntry(`❌ データ処理エラー: ${error.message}`);
           }
         }
 
+        parseFallback(text) {
+          // "humidity:48.1" / "湿度=48.1%" / "48.1%" / 48.1 などをカバー
+          if (typeof text !== "string") return { value: String(text) };
+          const trimmed = text.trim();
+
+          // 数値だけなら value として扱う
+          const num = parseFloat(trimmed.replace("%", ""));
+          if (
+            !isNaN(num) &&
+            (trimmed.match(/[0-9.]/g) || []).length >=
+              String(num).replace(".", "").length
+          ) {
+            // % があれば湿度とみなす
+            if (trimmed.includes("%")) return { humidity: num };
+            return { value: trimmed, humidity: num }; // 推定
+          }
+
+          // "humidity: 48.1" / "湿度=48.1%" など
+          const re = /(humidity|hum|湿度)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)%?/i;
+          const m = trimmed.match(re);
+          if (m) return { humidity: parseFloat(m[2]) };
+
+          return { value: trimmed };
+        }
+
+        extractHumidity(obj) {
+          if (!obj || typeof obj !== "object") return undefined;
+          // 候補キーを優先的に見る
+          const keys = Object.keys(obj);
+          for (const k of keys) {
+            const lower = k.toLowerCase();
+            if (lower.includes("humid") || k === "湿度") {
+              const v = parseFloat(String(obj[k]).toString().replace("%", ""));
+              if (!isNaN(v)) return v;
+            }
+          }
+          // 候補キーが無いが、値に % が付いていれば採用
+          for (const k of keys) {
+            const v = obj[k];
+            if (typeof v === "string" && v.includes("%")) {
+              const n = parseFloat(v.replace("%", ""));
+              if (!isNaN(n)) return n;
+            }
+          }
+          return undefined;
+        }
+
         updateDataDisplay(data) {
-          // データオブジェクトの各プロパティを表示
+          // 各プロパティをカード表示
           Object.keys(data).forEach((key) => {
             const value = data[key];
             this.createOrUpdateDataCard(key, value);
@@ -108,43 +491,37 @@
         }
 
         createOrUpdateDataCard(label, value) {
-          const cardId = `card-${label}`;
+          const safeId = label.replace(/[^a-zA-Z0-9_-]/g, "_");
+          const cardId = `card-${safeId}`;
           let card = document.getElementById(cardId);
 
           if (!card) {
-            // 新しいカードを作成
             card = document.createElement("div");
             card.className = "data-card";
             card.id = cardId;
-
             card.innerHTML = `
-                        <div class="data-label">${this.formatLabel(label)}</div>
-                        <div class="data-value" id="value-${label}">--</div>
-                        <div class="data-unit" id="unit-${label}"></div>
-                    `;
-
+              <div class="data-label">${this.formatLabel(label)}</div>
+              <div class="data-value" id="value-${safeId}">--</div>
+              <div class="data-unit" id="unit-${safeId}"></div>
+            `;
             document.getElementById("dataDisplay").appendChild(card);
           }
 
-          // 値を更新
-          const valueElement = document.getElementById(`value-${label}`);
-          const unitElement = document.getElementById(`unit-${label}`);
+          const valueElement = document.getElementById(`value-${safeId}`);
+          const unitElement = document.getElementById(`unit-${safeId}`);
 
           if (valueElement) {
             valueElement.textContent = this.formatValue(value);
             valueElement.classList.add("pulse");
             setTimeout(() => valueElement.classList.remove("pulse"), 500);
           }
-
-          // 単位を推定して設定
           if (unitElement) {
             unitElement.textContent = this.guessUnit(label, value);
           }
         }
 
         formatLabel(label) {
-          // ラベルを日本語に変換
-          const labelMap = {
+          const map = {
             temperature: "温度",
             humidity: "湿度",
             pressure: "気圧",
@@ -157,29 +534,31 @@
             sensor: "センサー値",
             data: "データ",
           };
-
-          return labelMap[label.toLowerCase()] || label;
+          const lower = label.toLowerCase();
+          return map[lower] || label;
         }
 
         formatValue(value) {
-          if (typeof value === "number") {
-            return value.toFixed(2);
-          }
-          return value.toString();
+          if (typeof value === "number") return value.toFixed(2);
+          const v = String(value);
+          // "48.1%" などはそのまま
+          const maybeNum = parseFloat(v.replace("%", ""));
+          if (!isNaN(maybeNum) && v.includes("%")) return v;
+          return v;
         }
 
         guessUnit(label, value) {
-          const lowerLabel = label.toLowerCase();
-
-          if (lowerLabel.includes("temp")) return "°C";
-          if (lowerLabel.includes("humid")) return "%";
-          if (lowerLabel.includes("pressure")) return "hPa";
-          if (lowerLabel.includes("distance")) return "cm";
-          if (lowerLabel.includes("voltage")) return "V";
-          if (lowerLabel.includes("current")) return "A";
-          if (lowerLabel.includes("speed")) return "m/s";
-          if (lowerLabel.includes("angle")) return "°";
-
+          const lower = label.toLowerCase();
+          if (lower.includes("temp")) return "°C";
+          if (lower.includes("humid")) return "%";
+          if (lower.includes("pressure")) return "hPa";
+          if (lower.includes("distance")) return "cm";
+          if (lower.includes("voltage")) return "V";
+          if (lower.includes("current")) return "A";
+          if (lower.includes("speed")) return "m/s";
+          if (lower.includes("angle")) return "°";
+          // 値に % が含まれていれば単位を出さない（値に含まれているため）
+          if (typeof value === "string" && value.includes("%")) return "";
           return "";
         }
 
@@ -203,64 +582,153 @@
         }
 
         addLogEntry(message) {
-          const logContainer = document.getElementById("dataLog");
+          const log = document.getElementById("dataLog");
           const entry = document.createElement("div");
           entry.className = "log-entry";
-
           const timestamp = new Date().toLocaleTimeString("ja-JP");
           entry.textContent = `[${timestamp}] ${message}`;
+          log.appendChild(entry);
 
-          logContainer.appendChild(entry);
-
-          // ログエントリ数を制限
-          const entries = logContainer.querySelectorAll(".log-entry");
-          if (entries.length > this.maxLogEntries) {
-            entries[0].remove();
-          }
-
-          // 最新エントリまでスクロール
-          logContainer.scrollTop = logContainer.scrollHeight;
+          const entries = log.querySelectorAll(".log-entry");
+          if (entries.length > this.maxLogEntries) entries[0].remove();
+          log.scrollTop = log.scrollHeight;
         }
 
         showError(message) {
-          const errorElement = document.getElementById("errorMessage");
-          errorElement.textContent = message;
-          errorElement.style.display = "block";
+          const el = document.getElementById("errorMessage");
+          el.textContent = message;
+          el.style.display = "block";
         }
-
         hideError() {
           document.getElementById("errorMessage").style.display = "none";
         }
 
-        attemptReconnect() {
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = Math.min(
-              1000 * Math.pow(2, this.reconnectAttempts),
-              10000
-            );
-
-            this.addLogEntry(
-              `🔄 ${delay / 1000}秒後に再接続を試みます... (${
-                this.reconnectAttempts
-              }/${this.maxReconnectAttempts})`
-            );
-
-            setTimeout(() => {
-              this.initializeWebSocket();
-            }, delay);
-          } else {
-            this.showError(
-              "最大再接続回数に達しました。ページを更新してください。"
-            );
-            this.addLogEntry(
-              "❌ 再接続に失敗しました。ページを更新してください。"
-            );
+        /* ========== 湿度UI/状態 ========== */
+        setStatus(kind, text) {
+          const dot = document.getElementById("dot");
+          const st = document.getElementById("statusText");
+          if (dot) {
+            dot.classList.remove("ok", "connecting", "offline");
+            dot.classList.add(kind);
           }
+          if (st) st.textContent = text ?? "";
+        }
+
+        updateHumidityUI(hum, timeStr) {
+          const humEl = document.getElementById("hum");
+          if (humEl) {
+            humEl.textContent = hum.toFixed(1);
+            humEl.classList.add("pulse");
+            setTimeout(() => humEl.classList.remove("pulse"), 400);
+          }
+          const ts = document.getElementById("ts");
+          if (ts) ts.textContent = timeStr;
+        }
+
+        /* ========== グラフ ========== */
+        initializeChart() {
+          const ctx = document.getElementById("humChart")?.getContext("2d");
+          if (!ctx || !window.Chart) return;
+          this.humChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: [],
+              datasets: [
+                {
+                  label: "湿度(%)",
+                  data: [],
+                  tension: 0.25,
+                  pointRadius: 0,
+                },
+              ],
+            },
+            options: {
+              animation: false,
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { display: false },
+                y: { min: 0, max: 100, ticks: { stepSize: 10 } },
+              },
+              plugins: { legend: { display: false } },
+            },
+          });
+        }
+
+        updateChart(hum, timeStr) {
+          if (!this.humChart) return;
+          const ds = this.humChart.data.datasets[0].data;
+          const labels = this.humChart.data.labels;
+
+          ds.push(hum);
+          labels.push(timeStr);
+          this.humHistory.push({ time: timeStr, value: hum });
+
+          // 古い点を間引き
+          while (ds.length > this.maxPoints) {
+            ds.shift();
+            labels.shift();
+          }
+          while (this.humHistory.length > this.maxPoints) {
+            this.humHistory.shift();
+          }
+
+          this.humChart.update("none");
+        }
+
+        bindButtons() {
+          const clearBtn = document.getElementById("clearBtn");
+          const csvBtn = document.getElementById("csvBtn");
+
+          clearBtn?.addEventListener("click", () => {
+            if (this.humChart) {
+              this.humChart.data.labels = [];
+              this.humChart.data.datasets[0].data = [];
+              this.humChart.update();
+            }
+            this.humHistory = [];
+            const humEl = document.getElementById("hum");
+            if (humEl) humEl.textContent = "--";
+            document.getElementById("ts").textContent = "--:--:--";
+            this.addLogEntry("🧹 湿度グラフと履歴をリセットしました");
+          });
+
+          csvBtn?.addEventListener("click", () => {
+            if (this.humHistory.length === 0) {
+              this.addLogEntry("ℹ️ CSV出力: データがありません");
+              return;
+            }
+            const header = "time,humidity\n";
+            const rows = this.humHistory
+              .map((r) => `${r.time},${r.value.toFixed(2)}`)
+              .join("\n");
+            const blob = new Blob([header + rows], {
+              type: "text/csv;charset=utf-8;",
+            });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `humidity_${this.timestampForFile()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+
+            this.addLogEntry("💾 CSVを保存しました");
+          });
+        }
+
+        timestampForFile() {
+          const d = new Date();
+          const pad = (n) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(
+            d.getDate()
+          )}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
         }
       }
 
-      // アプリケーション開始
+      // アプリ開始
       document.addEventListener("DOMContentLoaded", () => {
         new ArduinoDataDisplay();
       });
