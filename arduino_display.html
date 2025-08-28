@@ -152,7 +152,7 @@
         border-bottom: 0;
       }
 
-      /* ====== 2) 湿度カード + グラフ（2つ目HTMLのスタイル） ====== */
+      /* ====== 2) 湿度カード + グラフ（拡大版） ====== */
       .card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -211,10 +211,23 @@
         box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
       }
 
+      /* ▼ グラフの高さを少し大きめに（縦幅アップ） */
       .chart-wrap {
         width: min(960px, 100%);
         margin: 18px auto 0;
+        height: clamp(220px, 32vh, 320px); /* 最小220px, 推奨32vh, 最大320px */
       }
+      .chart-wrap canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important; /* 親の高さにフィット */
+      }
+      @media (max-width: 480px) {
+        .chart-wrap {
+          height: clamp(200px, 28vh, 280px);
+        }
+      }
+
       .controls {
         display: flex;
         gap: 10px;
@@ -270,7 +283,7 @@
         接続エラーが発生しました
       </div>
 
-      <!-- ▼ 湿度カード + ライブグラフ（統合） -->
+      <!-- ▼ 湿度カード + ライブグラフ -->
       <section class="humidity-section">
         <section class="card">
           <div class="value-row">
@@ -286,7 +299,7 @@
         </section>
 
         <section class="chart-wrap">
-          <canvas id="humChart" height="220"></canvas>
+          <canvas id="humChart"></canvas>
           <div class="controls">
             <button id="clearBtn" class="btn outline">リセット</button>
             <button id="csvBtn" class="btn">CSV保存</button>
@@ -294,14 +307,8 @@
         </section>
       </section>
 
-      <!-- 汎用データカード（受信データの各キーを自動でカード化） -->
-      <div class="data-display" id="dataDisplay">
-        <div class="data-card">
-          <div class="data-label">ヒント</div>
-          <div class="data-value">JSON の各キーがカードで増えます</div>
-          <div class="data-unit"></div>
-        </div>
-      </div>
+      <!-- 汎用データカード（ヒントは削除済み） -->
+      <div class="data-display" id="dataDisplay"></div>
 
       <!-- 受信ログ -->
       <div class="raw-data">
@@ -312,7 +319,7 @@
       </div>
     </div>
 
-    <!-- ▼ アプリ本体 -->
+    <!-- ▼ アプリ本体（省略なし） -->
     <script>
       class ArduinoDataDisplay {
         constructor() {
@@ -645,7 +652,7 @@
             options: {
               animation: false,
               responsive: true,
-              maintainAspectRatio: false,
+              maintainAspectRatio: false, // ← CSSの高さに従わせる
               scales: {
                 x: { display: false },
                 y: { min: 0, max: 100, ticks: { stepSize: 10 } },
